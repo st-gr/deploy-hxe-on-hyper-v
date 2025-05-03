@@ -225,3 +225,60 @@ If the target had a separate /boot then we'd need to mount that, too, e. g.
 
 **5. Chroot and enable Hyper-V support**
 
+````
+chroot /mnt/sdbroot /bin/bash -l -c '
+  # pick up the kernel version that actually exists under /lib/modules
+  kver=$(ls /lib/modules)
+
+  # only enable the daemons you have
+  systemctl enable hv_fcopy_daemon.service hv_kvp_daemon.service || true
+
+  # drop in the dracut snippet
+  mkdir -p /etc/dracut.conf.d
+  printf "add_drivers+=\\"hv_vmbus hv_netvsc hv_storvsc\\"\\n" \
+    > /etc/dracut.conf.d/hv-drivers.conf
+
+  # rebuild initramfs for the correct kernel
+  dracut --kver "$kver" -f -v
+'
+````
+
+![Execute rebuild of initramfs](/assets/hyper-v-jeos-fix-hxe-chroot.png)
+
+A bunch of warnings are output, but it should end in:
+
+    dracut: *** Creating initramfs image file '/boot/initrd-5.3.18-150300.59.164-default' done ***
+    
+**6. Unmount**
+
+    for fs in run proc sys dev; do umount /mnt/sdbroot/$fs; done
+    # umount /mnt/sdbroot/boot   # if you mounted it - not needed
+    umount /mnt/sdbroot
+    
+**7. Restart the now fixed HXEhost**
+
+We can now start our VM again and presto the hard drive is detected and the initial boot of the HANA Express Appliance works.
+
+![Changing time zone - HXE booted on Hyper-V](/assets/hyper-v-gen1-vm-hxe-boots.png)
+
+### Option 2: Transplant to use a Gen2 VM
+
+Right click on the VM and choose to delete the Gen1 VM using the Hyper-V Manager. 
+
+A Hyper-V Gen2 VM boots from UEFI not BIOS and has secure boot enabled by default.
+
+Since we were able to boot the VHDX using a Gen1 VM we know that the partition scheme of the VHDX is not compatible with an UEFI boot system.
+
+We could try and use a Gparted live CD to add an EFI partition and do other things or we could use the JeOS as a template and transplant the root filesystem of the HANA Appliance into the JeOS Gen2 VM.
+
+This is complicated and will be part of another guide (maybe never) as the HANA Express Appliance is built with a GPT partition scheme and meant to be used with a Gen1 VM profile.
+
+[10]: https://sourceforge.net/projects/com0com/
+
+[11]: https://www.suse.com/support/kb/doc/?id=000019587#:~:text=5.3.18%2D150300.59.164.1
+
+[12]: https://www.suse.com/download/sles/
+
+---
+
+[<< Previous Chapter](chapter-3-convert-appliance.md) | [Content Table](README.md) | [Next Chapter >>](chapter-5-post-install.md)
