@@ -216,43 +216,6 @@ We are also deactivating Hyper-V checkpoint snapshots and enable shutdown when w
 
 ![Create and start Gen1 VM](/assets/hyper-v-create-gen1-vm.png)
 
-### Optional: Use COMpipe to connect to the VM via PuTTY
-
-At boot time the Hyper-V VM has no network connection and no OpenSSH service running. Therefore we can't use PuTTY or another terminal tool to interact with the VM at this stage.
-
-PuTTY can also use a COM port to connect to a machine and Hyper-V lets us bind the VM's COM ports to named pipes. PuTTY can't directly use named pipes. That is where COMpipe comes into play. It bridges the host machines (your PC) physical COM port with a named pipe then PuTTY can connect to this tunnel to the VM's shell.
-
-Make sure that you have an available COM port otherwise use a virtual COM port tool like [com0com][10].
-
-**1. Configure a named pipe name on the VM's COM1 port**  
-    Let us name it `hxe2com4`.
-  
-![Configure named pipe for guest VM COM1](/assets/hyper-v-com1-pipe.png)
-    
-**2. Start the VM and pause boot and enable serial console**  
-    Right click on the VM in Hyper-V Manager and chose Connect, then click the start button.
-    When you are presented with a boot menu press the cursor down key to toggle the grub menu selection. This will interrupt the timeout for the default boot item.
-    Enable the serial console, by pressing the 'e' key and then move the cursor until you see the depicted boot entry. Replace `splash=silent quiet` with `console=ttyS0,9600`. Don't press F10, yet only after step 4.
-    
-![Edit grub boot entry, enable serial console](/assets/hyper-v-gen1-sles-grub-enable-serial-console.png)
-
-**3. Start COMpipe from an admin PowerShell terminal**  
-    This will tunnel the VM's COM1 to the hosts COM4 port.
-
-    COMpipe.exe -b 9600 -c \\.\COM4 -p \\.\pipe\hxe2com4
-
-**4. Use PuTTY to connect**  
-    Connect to COM4 (when using com0com, then COM6) in PuTTY.
-    
-**5. Continue booting**  
-    Press F10 to continue to boot. PuTTY will now show the console output.
-
-![COMpipe running](/assets/hyper-v-gen1-sles-putty-serial-console-access.png)
-
-As a result we can now use PuTTY to interact with the VM even if it has no LAN connectivity.
-
-![PuTTY over COM port serial console](/assets/hyper-v-gen1-putty-over-serial-console.png)
-
 ### Connect and attempt to boot then Gen1 VM
 
 In the Hyper-V Manager we right-click on the new VM and choose Connect. A window will pop-up that shows the console screen of the appliance.
@@ -416,6 +379,44 @@ Since we were able to boot the VHDX using a Gen1 VM we know that the partition s
 We could try and use a Gparted live CD to add an EFI partition and do other things or we could use the JeOS as a template and transplant the root filesystem of the HANA Appliance into the JeOS Gen2 VM.
 
 This is complicated and will be part of another guide (maybe never) as the HANA Express Appliance is built with a GPT partition scheme and meant to be used with a Gen1 VM profile.
+
+### Optional: Use COMpipe to connect to the VM via PuTTY
+
+At boot time the Hyper-V VM has no network connection and no OpenSSH service running. Therefore we can't use PuTTY or another terminal tool to interact with the VM at this stage.
+
+PuTTY can also use a COM port to connect to a machine and Hyper-V lets us bind the VM's COM ports to named pipes. PuTTY can't directly use named pipes. That is where COMpipe comes into play. It bridges the host machines (your PC) physical COM port with a named pipe then PuTTY can connect to this tunnel to the VM's shell.
+
+Make sure that you have an available COM port otherwise use a virtual COM port tool like [com0com][10].
+
+**1. Configure a named pipe name on the VM's COM1 port**  
+    Let us name it `hxe2com4`.
+  
+![Configure named pipe for guest VM COM1](/assets/hyper-v-com1-pipe.png)
+    
+**2. Start the VM and pause boot and enable serial console**  
+    Right click on the VM in Hyper-V Manager and chose Connect, then click the start button.
+    When you are presented with a boot menu press the cursor down key to toggle the grub menu selection. This will interrupt the timeout for the default boot item.
+    Enable the serial console, by pressing the 'e' key and then move the cursor until you see the depicted boot entry. Replace `splash=silent quiet` with `console=ttyS0,9600`. Don't press F10, yet only after step 4.
+    
+![Edit grub boot entry, enable serial console](/assets/hyper-v-gen1-sles-grub-enable-serial-console.png)
+
+**3. Start COMpipe from an admin PowerShell terminal**  
+    This will tunnel the VM's COM1 to the hosts COM4 port.
+
+    COMpipe.exe -b 9600 -c \\.\COM4 -p \\.\pipe\hxe2com4
+
+**4. Use PuTTY to connect**  
+    Connect to COM4 (when using com0com, then COM6) in PuTTY.
+    
+**5. Continue booting**  
+    Press F10 to continue to boot. PuTTY will now show the console output.
+
+![COMpipe running](/assets/hyper-v-gen1-sles-putty-serial-console-access.png)
+
+As a result we can now use PuTTY to interact with the VM even if it has no LAN connectivity.
+
+![PuTTY over COM port serial console](/assets/hyper-v-gen1-putty-over-serial-console.png)
+
 
 [10]: https://sourceforge.net/projects/com0com/
 
