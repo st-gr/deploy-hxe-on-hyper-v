@@ -36,4 +36,8 @@ For detailed instructions, follow the chapters in order.
 
 ---
 
+## License
+
+This work is licensed under a [Creative Commons Attribution 4.0 International License](LICENSE).
+
 *Last updated: 5/1/2025*

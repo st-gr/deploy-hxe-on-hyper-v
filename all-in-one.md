@@ -489,4 +489,8 @@ To stop the database use
     
 Wait for the `hdbdaemon is stopped.` output. Then you can `sudo poweroff` the virtual machine.
 
+## License
+
+This documentation is licensed under a [Creative Commons Attribution 4.0 International License](LICENSE).
+
 ---

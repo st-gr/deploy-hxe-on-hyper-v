@@ -53,7 +53,7 @@ Enter the chosen SYSTEM users password and then you should see the current UTC t
 
 The command `xs apps` lists all HANA applications with their ports. Per default none of the ports are reachable. We must allow traffic to pass:
 
-````
+`````
 sudo firewall-cmd --zone=public --add-port=30015/tcp --permanent
 sudo firewall-cmd --zone=public --add-port=30013/tcp --permanent
 sudo firewall-cmd --zone=public --add-port=30017/tcp --permanent
@@ -65,7 +65,7 @@ sudo firewall-cmd --zone=public --add-port=39032/tcp --permanent
 sudo firewall-cmd --zone=public --add-port=51035/tcp --permanent
 
 sudo firewall-cmd --reload
-````
+`````
 
 ## Starting and stopping the HDB
 
@@ -80,6 +80,10 @@ To stop the database use
     HDB stop
     
 Wait for the `hdbdaemon is stopped.` output. Then you can `sudo poweroff` the virtual machine.
+
+## License
+
+This documentation is licensed under a [Creative Commons Attribution 4.0 International License](LICENSE).
 
 ---
 
