@@ -292,7 +292,7 @@ Now we mount the second disk (/dev/sdb), chroot into it, enable and bundle the H
 
 **1. Get overview of the partitions**
 
-    blikd
+    blkid
 
 Shows
 
@@ -370,15 +370,325 @@ We can now start our VM again and presto the hard drive is detected and the init
 
 ### Option 2: Transplant to use a Gen2 VM
 
-Right click on the VM and choose to delete the Gen1 VM using the Hyper-V Manager. 
-
-A Hyper-V Gen2 VM boots from UEFI not BIOS and has secure boot enabled by default.
+A Hyper-V Gen2 VM boots from UEFI not BIOS and has secure boot enabled by default. A Gen2 VM also has no COM Ports which prevents us from using the COMpipe option below which is more a nice-to-have. A Gen2 VM however can be deployed on Azure.
 
 Since we were able to boot the VHDX using a Gen1 VM we know that the partition scheme of the VHDX is not compatible with an UEFI boot system.
 
-We could try and use a Gparted live CD to add an EFI partition and do other things or we could use the JeOS as a template and transplant the root filesystem of the HANA Appliance into the JeOS Gen2 VM.
+We could try and use a Gparted live CD to add an EFI partition and do other things:
 
-This is complicated and will be part of another guide (maybe never) as the HANA Express Appliance is built with a GPT partition scheme and meant to be used with a Gen1 VM profile.
+* UUIDs in fstab - Device names (e. g. `/dev/sda*`) can change when we switch from an IDE to SCSI controller use UUIDs not device names in `/etc/fstab`
+* Add ESP - Gen 2 firmware only boots from FAT32 EFI partition using a GParted Live CD
+* Use VHDX, not VHD - We are prepared as a Gen 2 does not boot VHD disk images
+* Shrink the root partition and create a 512 MB EFI System Partition using GParted Live
+* grub-install (EFI target) - Places `/EFI/<id>/grub64.efi` and updates NVRAM
+* Secure Boot template - Linux shims are signed by MS UEFI CA, not by default Hyper-V template. Might need to disable secure boot.
+
+Microsoft’s official guidance is still “fresh install on Gen 2 and migrate/restore data” .
+For complex setups that can be quicker and less risky.
+
+We could use the JeOS as a template and transplant the root filesystem of the HANA Appliance into the JeOS Gen2 VM.
+The problem with using the JeOS template is that the root partition of the JeOS uses the Btrfs filesystem whereas the HANA Express Appliance uses the XFS filesystem, see `blkid` output from the **Option 1** paragraphs above.
+
+#### Step 1: Download JeOS
+
+Follow the steps outlined in **Option 1: Download compatible Linux Distribution**.
+
+#### Step 2: Convert the JeOS root partition to XFS
+
+1. First, create copies of the VHDX:
+   SHIFT + Right-Click on the folder
+   `C:\ProgramData\Microsoft\Windows\Virtual Hard Disks` and open a  terminal (I use PowerShell 5.1).
+
+````
+Copy-Item "SLES15-SP3-JeOS.x86_64-15.3-MS-HyperV-GM.vhdx" "HXEhost_Gen2.vhdx"
+Copy-Item "SLES15-SP3-JeOS.x86_64-15.3-MS-HyperV-GM.vhdx" "JeOS_rescue.vhdx"
+````
+
+2. Elevate the PowerShell session to an Admin shell:
+
+````
+Start-Process powershell -Verb RunAs -ArgumentList "-NoExit -Command cd '$PWD'"
+````
+
+3. Create a Gen2 VM named "JeOS-Rescue" in the Admin PowerShell:
+
+````
+New-VM -Name "JeOS-Rescue" -Generation 2 -MemoryStartupBytes 4GB -VHDPath "JeOS_rescue.vhdx" -SwitchName "External"
+Set-VMFirmware -VMName "JeOS-Rescue" -EnableSecureBoot Off
+Set-VM JeOS-Rescue -CheckpointType Disabled
+Set-VMFirmware -VMName "JeOS-Rescue" -EnableSecureBoot Off
+````
+
+4. Boot the rescue VM and log in:
+   SUSE JeOS needs a network connection and then starts the jeos-firtsboot to set the initial password of the root user and the locale).
+
+5. Resize the target disk from 24 GB to 140 GB
+
+```
+Resize-VHD -Path "HXEhost_Gen2.vhdx" -SizeBytes 140GB
+```
+
+6. Add the other VHDX files as additional drives:
+   We do this after the VM booted as the UUIDs of the other VHDX are identical to the boot drive. The system could therefore mount partitions on drives that we want to modify.
+
+````
+Add-VMHardDiskDrive -VMName "JeOS-Rescue" -Path "HXEhost_Gen2.vhdx"
+Add-VMHardDiskDrive -VMName "JeOS-Rescue" -Path "SLES15-SP3-JeOS.x86_64-15.3-MS-HyperV-GM.vhdx"
+Add-VMHardDiskDrive -VMName "JeOS-Rescue" -Path "hxexsa-disk1.vhdx"
+````
+
+   List all disks to identify them
+
+````
+lsblk -o NAME,HCTL,SIZE,FSTYPE,UUID,MOUNTPOINT
+````
+
+We observe that 
+* /dev/sda = `JeOS_rescue.vhdx`
+* /dev/sdb = `HXEhost_Gen2.vhdx` = our target disk
+* /dev/sdc = `SLES15-SP3-JeOS.x86_64-15.3-MS-HyperV-GM.vhdx` = original JeOS image
+* /dev/sdd = `hxexsa-disk1.vhdx` = converted ova image without EFI partition
+
+![JeOS-Rescue mounts and other drives](/assets/hyper-v-gen2-JeOS-rescue-mountpoints.png)
+
+##### Install xfsprogs package
+
+Since JeOS is a minimal OS we need to manually install the xfsprogs package from a rpm package file.
+
+Use another OS to download the rpm packages from OpenSUSE as the SLES JeOS has no valid package repository without registration.
+
+Fetch the xfsprogs formatter tools:
+
+       wget https://download.opensuse.org/distribution/leap/15.3/repo/oss/x86_64/xfsprogs-4.15.0-4.27.1.x86_64.rpm :contentReference[oaicite:2]{index=2}
+       
+Upload the file to the JeOS-Rescue VM using WinSCP or SCP from Ubuntu/Linux WSL.
+
+Verify the package requirements
+
+    rpm -qpR xfsprogs-4.15.0-4.27.1.x86_64.rpm
+
+outputs:
+
+````
+/bin/bash
+/bin/sh
+/bin/sh
+/bin/sh
+/bin/sh
+coreutils
+libblkid.so.1()(64bit)
+libblkid.so.1(BLKID_2.15)(64bit)
+libblkid.so.1(BLKID_2.17)(64bit)
+libc.so.6()(64bit)
+libc.so.6(GLIBC_2.10)(64bit)
+libc.so.6(GLIBC_2.14)(64bit)
+libc.so.6(GLIBC_2.2.5)(64bit)
+libc.so.6(GLIBC_2.26)(64bit)
+libc.so.6(GLIBC_2.3)(64bit)
+libc.so.6(GLIBC_2.3.3)(64bit)
+libc.so.6(GLIBC_2.3.4)(64bit)
+libc.so.6(GLIBC_2.4)(64bit)
+libc.so.6(GLIBC_2.6)(64bit)
+libhandle.so.1()(64bit)
+libhandle.so.1(LIBHANDLE_1.0.3)(64bit)
+libpthread.so.0()(64bit)
+libpthread.so.0(GLIBC_2.2.5)(64bit)
+libpthread.so.0(GLIBC_2.3.2)(64bit)
+libreadline.so.7()(64bit)
+librt.so.1()(64bit)
+librt.so.1(GLIBC_2.2.5)(64bit)
+librt.so.1(GLIBC_2.3.3)(64bit)
+libuuid.so.1()(64bit)
+libuuid.so.1(UUID_1.0)(64bit)
+rpmlib(CompressedFileNames) <= 3.0.4-1
+rpmlib(FileDigests) <= 4.6.0-1
+rpmlib(PayloadFilesHavePrefix) <= 4.0-1
+rpmlib(PayloadIsXz) <= 5.2-1
+````
+
+This boils down to the following four additional packages:
+
+* coreutils 
+* util-linux
+* libhandle1
+* libreadline7
+
+Let us check which ones are already installed:
+
+    rpm -q coreutils util-linux libhandle1 libreadline7
+
+outputs:
+
+````
+coreutils-8.32-1.2.x86_64
+util-linux-2.36.2-2.29.x86_64
+package libhandle1 is not installed
+libreadline7-7.0-17.83.x86_64
+````
+
+It is a little misleading as libhandle1 is part of the xfsprogs package. So no additional package is needed.
+
+Install the XFS tools
+
+    rpm -Uvh xfsprogs-4.15.0-4.27.1.x86_64.rpm
+    
+Confirm that `mkfs.xfs` works
+
+    mkfs.xfs -V
+    # output
+    mkfs.xfs version 4.15.0
+
+##### Recreate the root partition as XFS
+
+First, let's mount the target disk (HXEHost_Gen2.vhdx, which is sdb, but we need to change its UUID as it is already in use)
+
+    mkdir -p /mnt/target
+    NEW_UUID=$(uuidgen)
+    btrfstune -U $NEW_UUID /dev/sdb3   # confirm warning with y
+    mount /dev/sdb3 /mnt/target
+    
+Check that we can access the filesystem
+
+    ls /mnt/target
+    
+Create new XFS filesystem this will delete the partition!
+
+    umount /mnt/target
+    mkfs.xfs -f /dev/sdb3
+
+Resize /dev/sdb3 to 148 of 150GB of the disk
+
+````
+parted /dev/sdb resizepart 3 148GB
+partprobe /dev/sdb
+````
+
+Grow the XFS
+
+    mount /dev/sdb3 /mnt/target
+    xfs_growfs /mnt/target
+    umount /mnt/target
+
+##### Copy the appliance root
+
+````
+# mount source and target
+mkdir -p /mnt/source
+mount -o ro /dev/sdd3 /mnt/source
+mount /dev/sdb3    /mnt/target
+
+# copy *everything* EXCEPT the ESP and runtime dirs
+rsync -aAXH --info=progress2 \
+      --exclude='/boot/efi/*' \
+      --exclude='/proc/*' --exclude='/sys/*' --exclude='/dev/*' \
+      --exclude='/run/*'  --exclude='/tmp/*' \
+      /mnt/source/  /mnt/target/
+````
+
+#### Step 3: Configure EFI, Swap partitions, fstab
+
+##### Create a 2 GiB swap partition on sdb
+
+````
+umount /mnt/target
+parted -s /dev/sdb mkpart primary linux-swap 148GB 100%
+partprobe /dev/sdb
+mkswap /dev/sdb4
+uuid_swap=$(blkid -s UUID -o value /dev/sdb4)
+````
+
+##### Give sdb2 a unique ESP UUID & mount it
+
+````
+# re‑format the ESP to get a fresh UUID
+mkfs.vfat -F32 -n EFI /dev/sdb2
+uuid_esp=$(blkid -s UUID -o value /dev/sdb2)
+
+# mount it under the new root
+mkdir -p /mnt/target/boot/efi
+mount /dev/sdb2 /mnt/target/boot/efi
+````
+
+(*We leave the tiny BIOS‑GRUB partition **sdb1** untouched.*)
+
+##### Bind pseudo‑fs and chroot into the new system
+
+````
+for d in dev proc sys run; do mount --bind /$d /mnt/target/$d; done
+chroot /mnt/target /bin/bash
+````
+
+##### Create a clean /etc/fstab
+
+````
+uuid_root=$(blkid -s UUID -o value /dev/sdb3)
+cat > /etc/fstab <<EOF
+UUID=$uuid_root  /          xfs    defaults              0 1
+UUID=$uuid_esp   /boot/efi  vfat   umask=0002,utf8      0 2
+UUID=$uuid_swap  swap       swap   defaults              0 0
+EOF
+````
+
+Validate that all three partitions are referenced with a UUID.
+
+    cat /etc/fstab
+    
+If not all partitions have a UUID, then manually determine them with `lsblkid -f` and then edit fstab with `vi /etc/fstab`.
+
+##### Rebuild initrd with Hyper‑V drivers
+
+````
+kv=$(ls /boot/vmlinuz-* | head -1 | sed 's#.*/vmlinuz-##')
+dracut --add-drivers "hv_vmbus hv_storvsc" -f "/boot/initrd-$kv" "$kv"
+````
+
+##### Install GRUB to the new ESP & regenerate menu
+
+````
+exit # get out of chroot
+
+# create and mount the ESP inside that root
+mkdir -p /mnt/target/boot/efi
+mount /dev/sdb2   /mnt/target/boot/efi
+
+# quick sanity check
+ls /mnt/target/boot/efi/EFI 2>/dev/null || echo "ESP is empty (that's OK for now)"
+
+grub2-install --target=x86_64-efi \
+             --boot-directory=/mnt/target/boot \
+             --efi-directory=/mnt/target/boot/efi \
+             --bootloader-id=SLES \
+             --removable
+
+# Finish inside the chroot - create the GRUB menu
+chroot /mnt/target /bin/bash
+grub2-mkconfig -o /boot/grub2/grub.cfg
+
+exit # get out of chroot
+````
+
+##### Clean up & reboot
+
+````
+umount -R /mnt/target
+poweroff        # shut down, then detach the helper disks
+````
+
+#### Step 4: Create and boot the Gen2 VM
+
+````
+New-VM -Name "HXEHost_Gen2" -Generation 2 -MemoryStartupBytes 32GB -VHDPath "C:\ProgramData\Microsoft\Windows\Virtual Hard Disks\HXEHost_Gen2.vhdx" -SwitchName "External"
+    
+Set-VMProcessor -VMName "HXEHost_Gen2" -Count 4
+Set-VMFirmware -VMName "HXEHost_Gen2" -EnableSecureBoot Off
+Set-VM -Name "HXEHost_Gen2" -CheckpointType Disabled
+````
+
+This will:
+1. Create a Gen2 VM with 32GB RAM and the specified VHDX
+2. Set it to use 4 virtual CPUs
+3. Disable Secure Boot
+4. Disable checkpoints
 
 ### Optional: Use COMpipe to connect to the VM via PuTTY
 
