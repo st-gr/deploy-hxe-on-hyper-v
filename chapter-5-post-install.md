@@ -63,6 +63,8 @@ sudo firewall-cmd --zone=public --add-port=8090/tcp --permanent
 sudo firewall-cmd --zone=public --add-port=53075/tcp --permanent
 sudo firewall-cmd --zone=public --add-port=39032/tcp --permanent
 sudo firewall-cmd --zone=public --add-port=51035/tcp --permanent
+sudo firewall-cmd --zone=public --add-port=51009/tcp --permanent
+sudo firewall-cmd --zone=public --add-port=51024/tcp --permanent
 
 sudo firewall-cmd --reload
 `````

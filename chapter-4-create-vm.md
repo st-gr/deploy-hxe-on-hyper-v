@@ -107,7 +107,7 @@ We have some options:
 
 ### Option 1: Download compatible Linux Distribution
 
-From the `uname -r` output of the emergency shell and the boot screen we learned that the emergency shell uses the Linux kernel `5.3.18-150300.59.164`. Searching for SUSE and this release number we find that [SLE15 SP3 - LTSS][11] used this kernel. We therefore need to download aa version of *SUSE Enterprise Linux 15 SP3*.
+From the `uname -r` output of the emergency shell and the boot screen we learned that the emergency shell uses the Linux kernel `5.3.18-150300.59.164`. Searching for SUSE and this release number we find that [SLE15 SP3 - LTSS][11] used this kernel. We therefore need to download a version of *SUSE Enterprise Linux 15 SP3*.
 
 Navigating to [suse.com/download/sles][12] we click on the Stable Release *15 SP3* and Architecture *AMD64/Intel 64*. Searching for *Hyper* we find the file `SLES15-SP3-JeOS.x86_64-15.3-MS-HyperV-GM.vhdx.xz` which already has the VHDX format needed for Hyper-V and is a JeOS version meaning "Just Enough OS" to run.
 
@@ -453,7 +453,7 @@ mkswap /dev/sdb4
 uuid_swap=$(blkid -s UUID -o value /dev/sdb4)
 ````
 
-##### Give sdb2 a unique ESP UUID & mount it
+##### Give sdb2 an unique ESP UUID & mount it
 
 ````
 # re‑format the ESP to get a fresh UUID
